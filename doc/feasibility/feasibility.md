@@ -1,5 +1,27 @@
 # 可行性报告
-
+- [可行性报告](#可行性报告)
+  - [项目简介](#项目简介)
+  - [理论依据](#理论依据)
+    - [安全容器](#安全容器)
+    - [轻量虚拟机与Unikernel结合](#轻量虚拟机与unikernel结合)
+  - [技术依据](#技术依据)
+    - [kata Container 架构](#kata-container-架构)
+      - [概述](#概述)
+      - [kata的虚拟化映射接口](#kata的虚拟化映射接口)
+      - [kata的Hypervisor和VMM技术](#kata的hypervisor和vmm技术)
+  - [技术路线](#技术路线)
+    - [实现内核镜像的构建](#实现内核镜像的构建)
+      - [linux 发行版](#linux-发行版)
+      - [自定义OS](#自定义os)
+    - [实现Unikernel与虚拟机的接口](#实现unikernel与虚拟机的接口)
+      - [kata-Container Interface model：](#kata-container-interface-model)
+      - [需要实现的接口模块以适配 unikernel](#需要实现的接口模块以适配-unikernel)
+      - [需要改写的kata 模块以适配unikernel](#需要改写的kata-模块以适配unikernel)
+        - [kata-runtime](#kata-runtime)
+        - [kata-agent](#kata-agent)
+    - [Unikernel的选取](#unikernel的选取)
+    - [实现 并入Kubernetes生态](#实现-并入kubernetes生态)
+  - [参考资料](#参考资料)
 ## 项目简介
 
 在云计算应用场景中，以Docker为代表的传统容器在遇到多租户场景时，它的安全问题立刻暴露了出来。 为此，先有kata container 提出安全容器的概念，用虚拟机弥补容器隔离的不足。然而其虚拟机过于重量级的问题，使得AWS对应推出了Firecracker microVM的方案，使得效率和资源消耗都有明显改善。而后有Google 提出的gVisor解决方案， 在容器的后端将所有的系统调用截断，凭借gVisor中用户程序来实现系统调用的API。 gVisor极其轻量，隔离性却也达到了操作系统能带来的隔离程度 。
