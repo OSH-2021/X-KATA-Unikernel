@@ -7,3 +7,5 @@
 - 赵辰阳
 - 谢新格
 - 胡乐翔
+
+![img](./picture/kata.png)
