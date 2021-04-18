@@ -8,4 +8,4 @@
 - 谢新格
 - 胡乐翔
 
-![img](./picture/kata.png)
+![img](./picture/kast.png)
