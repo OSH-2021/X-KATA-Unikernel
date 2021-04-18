@@ -36,7 +36,7 @@ Unikernel 与容器相比，虽然可以做的更小更安全，而且也不需�
 
 #### 概述
 
-![img](.\shimv2.png)
+![img](files/shimv2.png)
 
   `kata-agent` 负责启动容器进程，然后作为一个在虚拟机内守护进程，它使用ttRPC和host OS通信，shim-v2可以发送容器管理命令给agent，同时也可作为I/O stream的数据传输协议。
 
@@ -44,11 +44,11 @@ Unikernel 与容器相比，虽然可以做的更小更安全，而且也不需�
 
 上层接口：为了支持完整的CRI API 实现，kata需要提供以下结构
 
-![img](.\api-to-construct.png)
+![img](files/api-to-construct.png)
 
 下层接口：这些结构需要进一步被映射到和虚拟机交互的设备
 
-![img](.\vm-concept-to-tech.png)
+![img](files/vm-concept-to-tech.png)
 
 #### kata的Hypervisor和VMM技术
 
@@ -94,7 +94,7 @@ Kata Container runtime 需要创建虚拟机来隔离工作进程，虚拟机中
 
 #### kata-Container Interface model：
 
-![threat-model-boundaries](.\threat-model-boundaries.png)
+![threat-model-boundaries](files/threat-model-boundaries.png)
 
 #### 需要实现的接口模块以适配 unikernel
 
@@ -117,13 +117,13 @@ Kata Container runtime 需要创建虚拟机来隔离工作进程，虚拟机中
   - 和kata-agent通信来配置沙盒
   - 开启kata-shim
 
-![img](.\kata-oci-create.png)
+![img](files/kata-oci-create.png)
 
 - exec
 - - 向kata-agent 发送proxy请求，开启新的进程
   - 创建新的kata-shim 在已有的namespace中代表新的进程
 
-![img](.\kata-oci-exec.png)
+![img](files/kata-oci-exec.png)
 
 ##### kata-agent 
 
@@ -137,7 +137,7 @@ Kata Container runtime 需要创建虚拟机来隔离工作进程，虚拟机中
 
 尽可能多的CRI-API实现，参考下图API
 
-![img](.\api-to-construct.png)
+![img](files/api-to-construct.png)
 
 ## 参考资料
 
