@@ -116,7 +116,7 @@ Unikernel 是与某种语言紧密相关的，一种 unikernel 只能用一种�
 
 Unikernel在整个服务器的架构中取消了操作系统，应用直接运行在hypervisor或者硬件上。试图抹去现代操作系统带来的一些复杂性。因为“通用”的操作系统（就像任何Linux和Windows的发行版），通常会伴随着带来一些对你的应用来说并不需要的驱动、依赖包、服务、等等。
 
-![image](https:////upload-images.jianshu.io/upload_images/2231313-9aabbc2ec23f3855?imageMogr2/auto-orient/strip|imageView2/2/w/600/format/webp)
+![image](https://upload-images.jianshu.io/upload_images/2231313-9aabbc2ec23f3855?imageMogr2/auto-orient/strip|imageView2/2/w/600/format/webp)
 
 **这就使得它获得了下面几个优势：**
 
