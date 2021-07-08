@@ -7,7 +7,7 @@ import virtms
 
 cmds = ['create', 'list', 'destroy', 'suspend', 'reset', 
         'reboot', 'rename', 'shutdown', 'view', 'env', 
-        'close', 'status']
+        'close', 'status','run']
 
 def entrance():
     if len(sys.argv) <= 1:
@@ -19,11 +19,16 @@ def entrance():
         return
 
     if sys.argv[1] == 'list':
-        info.list()
+        print(info.list_all_vms())
         return
 
     elif sys.argv[1] == 'create':
         create(sys.argv[2])
+        return
+
+    elif sys.argv[1] == 'run':
+        create(sys.argv[2])
+        os.system('virt-viewer ' + sys.argv[2])
         return
 
     elif sys.argv[1] == 'view':

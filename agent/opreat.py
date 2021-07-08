@@ -1,4 +1,4 @@
-import info
+from prework import info
 import os
 
 def destroy(name):
