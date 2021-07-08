@@ -1,10 +1,15 @@
 import info
 import os
+from precheck import precheck
 
 def create(name):
         '''
         创建虚拟机
         '''
+        precheck()
+
+        os.system('ops build ' + name)
+
         user = os.getenv('USER')
 
         conn = info.get_conn()
