@@ -66,12 +66,12 @@ void InsertionSort(int* A, int p, int r) {
 int main() {
     srand(time(NULL));
     time_t start, end;
-	int A[100000];
-	for(int i=0;i<100000;i++)
-		A[i]=rand()%100000;
+	int A[50000];
+	for(int i=0;i<50000;i++)
+		A[i]=rand()%50000;
 
 	start = clock();
-	InsertionSort(A, 0, 99999);
+	InsertionSort(A, 0, 49999);
 	end = clock();
 	double consume = double(end - start)/CLOCKS_PER_SEC;
 	std::cout<<"sort completed"<<std::endl;
