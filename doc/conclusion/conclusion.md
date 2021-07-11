@@ -7,29 +7,56 @@
 
 我们试图利用unikernel得天独厚的轻量和攻击面小的特性，结合虚拟化技术，为FaaS（Function As A Service）场景下的云服务提出一种解决方案：从客户端提交代码，到云平台进行Serverless运算。采用KVM 的虚拟机接口，在虚拟化环境中以unikernel减少资源开销，达到空间的高效利用和速度的极限提升。
 
-## 2 理论依据
+## 2 背景和立项依据
 
-### 2.1 Unikernel选取
+### 2.1 项目背景
 
- ![img](https://repository-images.githubusercontent.com/115159616/44eb1980-a6f4-11e9-9e7b-df7adf662967) 
+#### 2.1.1 传统容器的不足
 
-Nanos 是一种新内核，旨在在虚拟化环境中运行一个且仅一个应用程序。 与 Windows 或 Linux 等通用操作系统相比，它有几个限制——即它是一个单进程系统，不支持运行多个程序，也没有用户或通过 ssh 进行远程管理的概念。
+传统容器使用 Namespace/Cgroup 实现，这套容器技术实际上同样是从进程调度的角度入手，对内核进行的功能扩展，优势上来说，操作界面很 Linux、很方便，开销也很低，可以被用来无负担地套在已有应用外面来构建隔离的环境，并且它是纯软件方案，不和其他层面的物理机、虚拟机相冲突。 
 
-### 2.2 libvirt
+![docker structure](files\docker structure.png)
 
+Namespace/Cgroup 是内核的一个部分，其中运行的容器仍然使用主机的 Linux 内核，他解决不了Linux内核中隔离性差的问题，攻击者可以利用Linux内核的漏洞来实施攻击，进而实现容器逃逸，然后便可以直接对宿主机进行攻击。 
 
+#### 2.1.2 安全容器的提出
 
-## 3 技术依据
+基于操作系统本身的容器机制没办法解决安全性问题，需要一个隔离层；而虚拟机是一个现成的隔离层，AWS这样的云服务已经让全世界相信，对用户来说，"secure of VM" 是可以满足需求的；虚拟机里面只要有个内核，就可以支持 OCI 规范的语义，在内核上跑个 Linux 应用这并不太难实现。
 
-### kata Container 架构
+所以，安全容器的隔离层让应用的问题——不论是恶意攻击，还是意外错误——都不至于影响宿主机，也不会在不同的 Pod 之间相互影响。而且实际上，额外隔离层带来的影响并不仅是安全，对于调度、服务质量和应用信息的保护都有好处。
 
-#### 概述
+轻量内核的代表：unikernel 
 
-![img](files/shimv2.png)
+安全容器的参考实现：kata-container 
 
-  `kata-agent` 负责启动容器进程，然后作为一个在虚拟机内守护进程，它使用ttRPC和host OS通信，shim-v2可以发送容器管理命令给agent，同时也可作为I/O stream的数据传输协议。
+轻量虚拟机的参考实现：Firecracker microVM
 
-#### kata的虚拟化映射接口
+相关的实现有很多，我们这里只谈两个比较主流的实现：
+
+- Kata Container 是MicroVM的一个经典的实现实现，它提供了一个MicroVM，并且有专门提供给 Kubernetes 使用的接口，有比较好的安全性和运行效率，现在已经开始逐步使用。但是其启动时间和内存占用与传统容器还有一定的差距。
+- 而 gVisor 是基于进程虚拟化的容器实现，他拥有很好的隔离性，很小的内存占用和启动时间，但是系统调用效率不高，这是我们解决的重点问题。
+
+##### gVisor的问题
+
+![gVisor2](files\gVisor2.png)
+
+gVisor 的大体结构是由 Sentry 和 Gofer 两个部分组成的。
+
+Sentry 本身构成一个系统内核，对应用程序的一切系统调用做出回应，Sentry 所需要的一些系统功能由 Host Kernel 提供，但是 Sentry 只是用很小部分系统调用，有这样的保证呢，它就可以在内核和应用直接建立起了一层新的抽象。 Sentry 访问文件系统时，要通过 Gofer 进程处理，Gofer 进程可以使用完整的系统调用，但Sentry和Gofer使用严格的9P协议链接，有力的对不同组件进行解耦，防止不安全的系统调用。
+
+一方面，gVisor 使用 Linux 提供的 ptrace 实现，ptrace 是一个用于调试进程的系统的调用，主要用于 gdb 以及 strace 这样的调试分析工具。不过 ptrace 系统调用非常强大，强大到 ptrace 可以支持这种将一个进程完全控制，捕获应用程序的所有系统调用和事件，但是 ptrace 在效率上有一定的问题。
+
+应用程序在调用系统调用时，会进入内核态，然后内核会唤醒 Sentry 进程让 Sentry 进程执行，Sentry 进程执行完后，再进行一次系统调用切换到内核态，内核态继续转到应用程序中运行。
+
+这样的过程中会出现大量的内核态到用户态的切换，这个过程中会出现大量的上下文切换。这个开销在以计算为主的应用比如深度学习环境下不是很大的问题，但它在需要使用大量系统调用的、这种IO密集型的服务端容器运行环境内是难以接受的，Xu Wang 和 Fupan Li 做了一组 benchmark，可以看到，gVisor 在 Nginx 上比 runC 和 Kata 慢了将近 50 倍。这个数据足以显示出 gVisor 的在系统调用密集的应用中性能与 Kata 和原本的 docker、runc 还是有较大差距。 
+
+![gbenchmark](files\gbenchmark.png)
+
+##### kata container 架构![shimv2](files\shimv2.png)
+
+`kata-agent` 负责启动容器进程，然后作为一个在虚拟机内守护进程，它使用ttRPC和host OS通信，shim-v2可以发送容器管理命令给agent，同时也可作为I/O stream的数据传输协议。
+
+###### kata的虚拟化映射接口
 
 上层接口：为了支持完整的CRI API 实现，kata需要提供以下结构
 
@@ -39,107 +66,81 @@ Nanos 是一种新内核，旨在在虚拟化环境中运行一个且仅一个�
 
 ![img](files/vm-concept-to-tech.png)
 
-#### kata的Hypervisor和VMM技术
+同样的，对轻量级的追求让kata的结构看起来仍然不够精简，于是，unikernel在保证完成功能的基础上，对内存的消耗和启动速度性能做了更进一步的优化。
 
-Firecracker拥有非常有限的设备模型，提供轻量级的服务并且暴露的攻击面极小，不过，Firecracker 不支持文件系统分享，仅支持block-based 存储驱动。同时，它也不支持设备热插拔和VFIO。
+#### 2.1.3 Unikernel和虚拟机结合
 
-所以Firecracker用到的虚拟设备有如下：
+microVM的代表Firecracker，是在rust众多crates基础上实现的VMM，它拥有非常有限的设备模型，提供轻量级的服务并且暴露的攻击面极小，在FaaS场景下有极大的应用空间。不过，Firecracker 不支持文件系统分享，仅支持block-based 存储驱动。同时，它也不支持设备热插拔和VFIO。在安全容器的实现中，Kata Containers with Firecracker VMM 支持了CRI的一部分API，使得microVM的优点得以发挥。
 
-- virtio VSOCK
-- virtio block
-- virtio net
+Unikernel 与容器相比，虽然可以做的更小更安全，而且也不需要有 Docker Daemon 这样的后台程序存在，甚至不需要 Host OS，或者 Hypervisor，但是它一是与传统的软件过程有较大的出入，二是在分发等等方面不能做到像容器那样方便。所以它目前肯定不会成为主流的应用分发方式，还需要进一步探索。
 
-summary： upstream Firecracker, rust-VMM based, no VFIO, no FS sharing, no memory/CPU hotplug 
+综上，Unikernel的缺点可以被kata Container易于分发的优点改善，同时纳入kubernetes生态，使得Unikernel的应用更加广泛。我们的目标即能够完成虚拟机对Unikernel的封装，对资源占用和运行速度进一步优化。
 
-## 技术路线
-
-### 实现内核镜像的构建
-
-#### linux 发行版
-
-Kata Container runtime 需要创建虚拟机来隔离工作进程，虚拟机中需要内核镜像
-
-需要五部分，来打造linux 镜像
-
-- rootfs
-- Guest OS
-- initrd
-- Base OS
-- dracut
-
-#### 自定义OS
-
-对于Unikernel 自定义镜像，
-
-可以参考`QAT customized kernel and rootfs`
-
-使用`QAT build dockerfiles` 来产生支持Intel QAT hardware
+![Unikernel](files\Unikernel.png)
 
 
 
-以上内容，官方文档已经给出详细文档，在此不赘述，详见：https://github.com/kata-containers/osbuilder#terms
+### 2.2 立项依据
 
-### 实现Unikernel与虚拟机的接口
+#### 2.2.1 Unikernel选取
 
-#### kata-Container Interface model：
+![图片1](files\图片1.png)
 
-![threat-model-boundaries](files/threat-model-boundaries.png)
+Unikernel 是与某种语言紧密相关的，一种 unikernel 只能用一种语言写程序，这个LibraryOS 加上用户的程序最终被编译成一个操作系统，这个操作系统只跑专门的程序，里面也只有一个程序，没有其它冗余的程序，没有多进程切换，所以系统很小也很简单。
 
-#### 需要实现的接口模块以适配 unikernel
+比如includeOS，只能运行c++的代码，这对于复杂的需求显然不能覆盖，如果针对一种或某种语言都要打包不同的Unikernel，那对虚拟机的要求则很难统一，维护和更新也变得十分困难。
 
-- vsock 
-- virtio-net
-- virtio-blk
-- virtio-fs
+Nanos 是一种新内核，旨在在虚拟化环境中运行一个且仅一个应用程序。 与 Windows 或 Linux 等通用操作系统相比，它有几个限制——即它是一个单进程系统，不支持运行多个程序，也没有用户或通过 ssh 进行远程管理的概念。
 
-#### 需要改写的kata 模块以适配unikernel
+Nanos的最大特点是，可以覆盖到主流的Python，PHP，C++，Golang以及Rust等多种语言环境，使其通用性得到进一步扩展。
 
-##### kata-runtime
+#### 2.2.2 KVM
 
-重要的OCI命令
+KVM全称是Kernel-based Virtual Machine，即基于内核的虚拟机，是采用硬件虚拟化技术的全虚拟化解决方案。
 
-- create
-  - 创建网络namespace，开启VM和shim 进程
-  - 召唤 pre-start hook
-  - 从network namespace扫描，创建veth和tap的通信链路
-  - 启动kata-proxy，用来模块间通信
-  - 和kata-agent通信来配置沙盒
-  - 开启kata-shim
+KVM最初是由Qumranet公司的Avi Kivity开发的，作为他们的VDI产品的后台虚拟化解决方案。为了简化开发，Avi Kivity并没有选择从底层开始新写一个Hypervisor，而是选择了基于Linux kernel，通过加载模块使Linux kernel本身变成一个Hypervisor。2006年10月，在先后完成了基本功能、动态迁移以及主要的性能优化之后，Qumranet正式对外宣布了KVM的诞生。同月，KVM模块的源代码被正式纳入Linux kernel，成为内核源代码的一部分。
 
-![img](files/kata-oci-create.png)
+![KVM](D:\GitHub\OS Big Lab\x-KATA-Unikernel\doc\conclusion\files\KVM.png)
 
-- exec
-- - 向kata-agent 发送proxy请求，开启新的进程
-  - 创建新的kata-shim 在已有的namespace中代表新的进程
+**1.内存管理** KVM依赖Linux内核进行内存管理。上面提到，一个KVM客户机就是一个普通的Linux进程，所以，客户机的“物理内存”就是宿主机内核管理的普通进程的虚拟内存。进而，Linux内存管理的机制，如大页、KSM（Kernel Same Page Merge，内核的同页合并）、NUMA（Non-Uniform Memory Arch，非一致性内存架构）、通过mmap的进程间共享内存，统统可以应用到客户机内存管理上。
 
-![img](files/kata-oci-exec.png)
+早期时候，客户机自身内存访问落实到真实的宿主机的物理内存的机制叫影子页表（Shadow Page Table）。KVM Hypervisor为每个客户机准备一份影子页表，与客户机自身页表建立一一对应的关系。客户机自身页表描述的是GVA→GPA的映射关系；影子页表描述的是GPA→HPA的映射关系。当客户机操作自身页表的时候，KVM就相应地更新影子页表。比如，当客户机第一次访问某个物理页的时候，由于Linux给进程的内存通常都是拖延到最后要访问的一刻才实际分配的，所以，此时影子页表中这个页表项是空的，KVM Hypervisor会像处理通常的缺页异常那样，把这个物理页补上，再返回客户机执行的上下文中，由客户机继续完成它的缺页异常。
 
-##### kata-agent 
+影子页表的机制是比较拗口，执行的代价也是比较大的。所以，后来，这种靠软件的GVA→GPA→HVA→HPA的转换被硬件逻辑取代了，大大提高了执行效率。这就是Intel的EPT或者AMD的NPT技术，两家的方法类似，都是通过一组可以被硬件识别的数据结构，不用KVM建立并维护额外的影子页表，由硬件自动算出GPA→HPA。现在的KVM默认都打开了EPT/NPT功能。
 
-包括和unikernel的接口和管理其生命周期
+**2.存储和客户机镜像的格式** 严格来说，这是QEMU的功能特性。
 
-### Unikernel的选取
+KVM能够使用Linux支持的任何存储来存储虚拟机镜像，包括具有IDE、SCSI和 SATA的本地磁盘，网络附加存储（NAS）（包括NFS和SAMBA/CIFS），或者支持iSCSI和光线通道的SAN。多路径I/O可用于改进存储吞吐量和提供冗余。
 
-参考实现 Rumprun，使用c编写，包含有主流高级语言依赖，真正做到根据应用分发。
+由于KVM是Linux内核的一部分，它可以利用所有领先存储供应商都支持的一种成熟且可靠的存储基础架构，它的存储堆栈在生产部署方面具有良好的记录。
 
-### 实现 并入Kubernetes生态
+KVM还支持全局文件系统（GFS2）等共享文件系统上的虚拟机镜像，以允许客户机镜像在多个宿主机之间共享或使用逻辑卷共享。磁盘镜像支持稀疏文件形式，支持通过仅在虚拟机需要时分配存储空间，而不是提前分配整个存储空间，这就提高了存储利用率。KVM 的原生磁盘格式为QCOW2，它支持快照，允许多级快照、压缩和加密。
 
-尽可能多的CRI-API实现，参考下图API
+**3.实时迁移** KVM支持实时迁移，这提供了在宿主机之间转移正在运行的客户机而不中断服务的能力。实时迁移对用户是透明的，客户机保持打开，网络连接保持活动，用户应用程序也持续运行，但客户机转移到了一个新的宿主机上。
 
-![img](files/api-to-construct.png)
+除了实时迁移，KVM支持将客户机的当前状态（快照，snapshot）保存到磁盘，以允许存储并在以后恢复它。
 
-## 参考资料
+**4.设备驱动程序** KVM支持混合虚拟化，其中半虚拟化的驱动程序安装在客户机操作系统中，允许虚拟机使用优化的 I/O 接口而不使用模拟的设备，从而为网络和块设备提供高性能的 I/O。
 
-OSbuilder：https://github.com/kata-containers/osbuilder#qat-customized-kernel-and-rootfs
+KVM 使用的半虚拟化的驱动程序是IBM和Redhat联合Linux社区开发的VirtIO标准；它是一个与Hypervisor独立的、构建设备驱动程序的接口，允许多种Hypervisor使用一组相同的设备驱动程序，能够实现更好的对客户机的互操作性。
 
-kata threat model：https://github.com/kata-containers/documentation/blob/master/design/threat-model/threat-model.md
+同时，KVM也支持Intel的VT-d 技术，通过将宿主机的PCI总线上的设备透传（pass-through）给客户机，让客户机可以直接使用原生的驱动程序高效地使用这些设备。这种使用是几乎不需要Hypervisor的介入的。
 
-kata virtualization：https://github.com/kata-containers/kata-containers/blob/main/docs/design/virtualization.md#firecrackerkvm
+**5.性能和可伸缩性** KVM也继承了Linux的性能和可伸缩性。KVM在CPU、内存、网络、磁盘等虚拟化性能上表现出色，大多都在原生系统的95%以上。KVM的伸缩性也非常好，支持拥有多达288个vCPU和4TB RAM的客户机，对于宿主机上可以同时运行的客户机数量，软件上无上限。
 
-kata architecture：https://github.com/kata-containers/kata-containers/blob/main/docs/design/architecture.md
+这意味着，任何要求非常苛刻的应用程序工作负载都可以运行在KVM虚拟机上。
 
-kata-runtime：https://github.com/kata-containers/runtime#architecture-overview
+#### libvirt
 
-kata-agent：https://github.com/kata-containers/agent
+libvirt是一个管理虚拟化平台的工具包，可从 C、Python、Perl、Go 等语言访问 在开源许可下获得许可，并且支持 KVM、QEMU、Xen、Virtuozzo、VMWare ESX、LXC、BHyve 等。他针对 Linux、FreeBSD、Windows 和 macOS 被许多应用程序使用。
 
-kata-design：https://github.com/kata-containers/kata-containers/tree/main/docs/design
+目前，libvirt 已经成为使用最为广泛的对各种虚拟机进行管理的工具和应用程序接口（API），而且一些常用的虚拟机管理工具（如virsh、virt-install、virt-manager等）和云计算框架平台（如OpenStack、OpenNebula、Eucalyptus等）都在底层使用libvirt的应用程序接口。 
+
+
+
+
+
+
+
+
+
