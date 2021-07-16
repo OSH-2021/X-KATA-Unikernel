@@ -88,7 +88,7 @@ ceph-deploy osd create \
 ceph -s
 ```
 
-![ceph -s](files/ceph -s.png)
+![ceph_s](files/ceph_s.png)
 
 部署完成！
 
