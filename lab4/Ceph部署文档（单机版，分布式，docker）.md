@@ -88,7 +88,7 @@ vi /etc/hosts
  vim /etc/sysconfig/network-scripts/ifcfg-ens33
 ```
 
-![setting](files\setting.jpg)
+![setting](files/setting.jpg)
 
 将`IPADDR = 192.168.43.10x`
 
@@ -375,7 +375,7 @@ ceph-deploy --overwrite-conf osd activate ceph-1:/dev/sdb ceph-client:/dev/sdb
 
 这个时候出现 ` health HEALTH_WARN`
 
-![ceph_warn](files\ceph_warn.png)
+![ceph_warn](files/ceph_warn.png)
 
 #### 11、增加rbd池的PG，去除WARN
 ```shell
@@ -392,7 +392,7 @@ ceph-deploy mds create ceph-1
 这个时候出现 ` health HEALTH_OK`
 显示` 128 active+clean` 即可
 
-![ceph_4osd](files\ceph_4osd.png)
+![ceph_4osd](files/ceph_4osd.png)
 
 ## 单机版
 
@@ -471,7 +471,7 @@ ceph osd crush remove ceph-1(ceph-client)
 ceph -s
 ```
 
-![ceph_healthok](files\ceph_healthok.png)
+![ceph_healthok](files/ceph_healthok.png)
 
 部署完成
 
