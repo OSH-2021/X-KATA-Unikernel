@@ -2,11 +2,95 @@
 
 本篇部署文档基于
 
+https://zhuanlan.zhihu.com/p/67832892 作者：itworld123
+
 https://blog.csdn.net/qq_35957624/article/details/78669103 作者：皮皮鲁666
 
 排除了一些部署中遇到的小bug。
 
 我们小组先挑战了分布式，然后再进行单机版就轻松了很多，docker的很多步骤和分布式差不多。
+
+## 单机版部署
+
+### 一、环境说明
+
+单节点：VMWare 虚拟机
+操作系统： CentOS 7.4
+
+### 二、安装软件 ceph-deploy
+
+```shell
+yum install https://download.ceph.com/rpm-luminous/el7/noarch/ceph-deploy-2.0.0-0.noarch.rpm
+```
+
+### 三、安装 ceph 软件包
+
+#### 1. 创建新集群
+
+```shell
+mkdir myceph
+cd myceph
+ceph-deploy new ceph2
+vim ceph.conf
+```
+
+把如下内容加入到 ceph.conf 里面：
+
+```shell
+osd pool default size = 1
+osd pool default min size = 1
+```
+
+#### 2. 安装 ceph 软件
+
+```shell
+ceph-deploy install --release luminous ceph2
+```
+
+### 四、初始化 mon
+
+```shell
+ceph-deploy mon create-initial
+ceph-deploy admin ceph2
+```
+
+### 五、部署ceph mgr
+
+```shell
+ceph-deploy mgr create ceph2
+```
+
+### 六、部署ceph osd
+
+#### 1. 创建卷组和逻辑卷
+
+```shell
+pvcreate /dev/sdb
+vgcreate  ceph-pool /dev/sdb
+lvcreate -n osd0.wal -L 1G ceph-pool
+lvcreate -n osd0.db -L 1G ceph-pool
+lvcreate -n osd0 -l 100%FREE ceph-pool
+```
+
+#### 2. 创建 OSD
+
+```shell
+ceph-deploy osd create \
+    --data ceph-pool/osd0 \
+    --block-db ceph-pool/osd0.db \
+    --block-wal ceph-pool/osd0.wal \
+    --bluestore ceph2
+```
+
+### 七、查看集群状态
+
+```shell
+ceph -s
+```
+
+![ceph -s](files/ceph -s.png)
+
+部署完成！
 
 ## 分布式部署
 
@@ -394,7 +478,7 @@ ceph-deploy mds create ceph-1
 
 ![ceph_4osd](files/ceph_4osd.png)
 
-## 单机版
+## 单机版（基于分布式的实现）
 
 在分布式的基础上，单机版就非常简单了。
 
